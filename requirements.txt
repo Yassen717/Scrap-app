@@ -1,4 +1,4 @@
-PyQt6==6.6.1
+PyQt6>=6.7.1,<6.9
 requests==2.31.0
 beautifulsoup4==4.12.2
 lxml>=5,<6

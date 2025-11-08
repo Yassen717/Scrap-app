@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                            QLineEdit, QPushButton, QTextEdit, QLabel, QComboBox,
-                           QMessageBox, QFileDialog, QFrame)
+                           QMessageBox, QFileDialog, QFrame, QProgressDialog, QApplication)
 from PyQt6.QtCore import QSettings, Qt, QTimer, QSize
 from PyQt6.QtGui import QPainter, QColor, QPen
 from theme import ThemeWindow
@@ -554,30 +554,40 @@ class WebScraperApp(QMainWindow):
             )
             
             if save_dir:
+                progress = QProgressDialog("Saving images...", "Cancel", 0, len(image_list), self)
+                progress.setWindowTitle("Saving Images")
+                progress.setWindowModality(Qt.WindowModality.WindowModal)
+                progress.setValue(0)
+
                 saved_count = 0
-                for img_url, img_data in image_list:
+                for i, (img_url, img_data) in enumerate(image_list):
+                    if progress.wasCanceled():
+                        break
                     try:
                         filename = os.path.basename(img_url.split('?')[0])
                         if not filename:
                             filename = f"image_{saved_count + 1}.jpg"
-                        
+
                         file_path = os.path.join(save_dir, filename)
-                        
+
                         base, ext = os.path.splitext(filename)
                         counter = 1
                         while os.path.exists(file_path):
                             file_path = os.path.join(save_dir, f"{base}_{counter}{ext}")
                             counter += 1
-                        
+
                         with open(file_path, 'wb') as f:
                             f.write(img_data)
                         saved_count += 1
-                        
                     except Exception as e:
                         self.results_text.append(f"\nError saving image {img_url}: {str(e)}")
-                
+                    finally:
+                        progress.setValue(i + 1)
+                        QApplication.processEvents()
+
+                progress.close()
                 self.results_text.append(f"\nSuccessfully saved {saved_count} images to {save_dir}")
-            
+
             # Stop spinner after saving is complete
             self.loading_spinner.stop()
 

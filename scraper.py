@@ -2,10 +2,14 @@ from PyQt6.QtCore import QThread, pyqtSignal
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+import concurrent.futures
 
 UA_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) WebScraper/1.0'
 }
+
+MAX_IMAGES = 50
+MAX_WORKERS = 8
 
 class ScraperThread(QThread):
     finished = pyqtSignal(str)
@@ -67,20 +71,35 @@ class ScraperThread(QThread):
                 result = "\n\n".join(texts)
             elif self.data_type == "Images":
                 images = soup.find_all('img', src=True)
-                image_data_list = []
-                
+                # Build list of absolute URLs, keep order and unique entries
+                urls = []
+                seen = set()
                 for img in images:
-                    img_url = urljoin(self.url, img.get('src', ''))
-                    if not img_url:
+                    u = urljoin(self.url, img.get('src', ''))
+                    if not u:
                         continue
-
-                    img_data = self.download_image(img_url)
-                    if img_data:
-                        image_data_list.append((img_url, img_data))
+                    if u in seen:
+                        continue
+                    seen.add(u)
+                    urls.append(u)
+                
+                # Apply cap to avoid huge downloads
+                capped = False
+                if len(urls) > MAX_IMAGES:
+                    urls = urls[:MAX_IMAGES]
+                    capped = True
+                
+                image_data_list = []
+                if urls:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                        for img_url, img_data in zip(urls, executor.map(self.download_image, urls)):
+                            if img_data:
+                                image_data_list.append((img_url, img_data))
                 
                 if image_data_list:
                     self.images_found.emit(image_data_list)
-                result = f"Found {len(image_data_list)} images"
+                cap_note = " (limited to first %d)" % MAX_IMAGES if capped else ""
+                result = f"Found {len(image_data_list)} images{cap_note}"
             
             self.finished.emit(result)
         except Exception as e:

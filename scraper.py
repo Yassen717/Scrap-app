@@ -1,6 +1,11 @@
 from PyQt6.QtCore import QThread, pyqtSignal
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+
+UA_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) WebScraper/1.0'
+}
 
 class ScraperThread(QThread):
     finished = pyqtSignal(str)
@@ -14,15 +19,15 @@ class ScraperThread(QThread):
 
     def download_image(self, img_url):
         try:
-            response = requests.get(img_url)
+            response = requests.get(img_url, headers=UA_HEADERS, timeout=(5, 15))
             response.raise_for_status()
             return response.content
-        except:
+        except requests.RequestException:
             return None
 
     def run(self):
         try:
-            response = requests.get(self.url)
+            response = requests.get(self.url, headers=UA_HEADERS, timeout=(5, 10))
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'lxml')
             
@@ -58,15 +63,10 @@ class ScraperThread(QThread):
                 image_data_list = []
                 
                 for img in images:
-                    img_url = img['src']
-                    if not img_url.startswith(('http://', 'https://')):
-                        # Handle relative URLs
-                        if img_url.startswith('/'):
-                            base_url = '/'.join(self.url.split('/')[:3])
-                            img_url = base_url + img_url
-                        else:
-                            img_url = self.url.rstrip('/') + '/' + img_url
-                    
+                    img_url = urljoin(self.url, img.get('src', ''))
+                    if not img_url:
+                        continue
+
                     img_data = self.download_image(img_url)
                     if img_data:
                         image_data_list.append((img_url, img_data))

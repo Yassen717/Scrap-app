@@ -53,11 +53,18 @@ class ScraperThread(QThread):
                     return
             elif self.data_type == "Links":
                 links = soup.find_all('a', href=True)
-                result = "\n".join([f"{link.text.strip()} - {link['href']}" 
-                                  for link in links if link.text.strip()])
+                entries = [f"{link.text.strip()} - {link['href']}" for link in links if link.text.strip()]
+                if not entries:
+                    self.error.emit("No links with non-empty text found on the page")
+                    return
+                result = "\n".join(entries)
             elif self.data_type == "Text Content":
                 paragraphs = soup.find_all('p')
-                result = "\n\n".join([p.text.strip() for p in paragraphs])
+                texts = [p.text.strip() for p in paragraphs if p.text.strip()]
+                if not texts:
+                    self.error.emit("No non-empty paragraph text found on the page")
+                    return
+                result = "\n\n".join(texts)
             elif self.data_type == "Images":
                 images = soup.find_all('img', src=True)
                 image_data_list = []

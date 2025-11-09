@@ -1,8 +1,9 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                            QLineEdit, QPushButton, QTextEdit, QLabel, QComboBox,
-                           QMessageBox, QFileDialog, QFrame, QProgressDialog, QApplication)
+                           QMessageBox, QFileDialog, QFrame, QProgressDialog, QApplication, QToolBar)
 from PyQt6.QtCore import QSettings, Qt, QTimer, QSize
-from PyQt6.QtGui import QPainter, QColor, QPen
+from PyQt6.QtGui import QPainter, QColor, QPen, QAction, QKeySequence
+from urllib.parse import urlparse
 from theme import ThemeWindow
 from scraper import ScraperThread
 import os
@@ -106,61 +107,153 @@ class WebScraperApp(QMainWindow):
         self.apply_theme(self.settings.value('theme', 'Light'))
 
     def setup_ui(self):
+        # Status bar
+        self.statusBar().showMessage("Ready")
+
+        # Top toolbar
+        toolbar = QToolBar("Main Toolbar")
+        toolbar.setMovable(False)
+        self.addToolBar(toolbar)
+
+        act_scrape = QAction("Scrape", self)
+        act_scrape.setShortcut(QKeySequence("Ctrl+Enter"))
+        act_scrape.triggered.connect(self.start_scraping)
+        toolbar.addAction(act_scrape)
+
+        act_clear = QAction("Clear", self)
+        act_clear.setShortcut(QKeySequence("Ctrl+K"))
+        act_clear.triggered.connect(self.clear_results)
+        toolbar.addAction(act_clear)
+
+        act_copy = QAction("Copy", self)
+        act_copy.setShortcut(QKeySequence("Ctrl+C"))
+        act_copy.triggered.connect(self.copy_results)
+        toolbar.addAction(act_copy)
+
+        act_save = QAction("Save", self)
+        act_save.setShortcut(QKeySequence("Ctrl+S"))
+        act_save.triggered.connect(self.save_results_to_file)
+        toolbar.addAction(act_save)
+
+        toolbar.addSeparator()
+
+        act_focus_url = QAction("Focus URL", self)
+        act_focus_url.setShortcut(QKeySequence("Ctrl+L"))
+        act_focus_url.triggered.connect(self.focus_url)
+        toolbar.addAction(act_focus_url)
+
+        toolbar.addSeparator()
+
+        act_themes = QAction("Themes", self)
+        act_themes.triggered.connect(self.open_theme_window)
+        toolbar.addAction(act_themes)
+
+        act_help = QAction("Help", self)
+        act_help.triggered.connect(self.show_help)
+        toolbar.addAction(act_help)
+
+        act_about = QAction("About", self)
+        act_about.triggered.connect(self.show_about)
+        toolbar.addAction(act_about)
+
         # Create main widget and layout
         main_widget = QWidget()
-        main_layout = QHBoxLayout()  
-        
+        main_layout = QHBoxLayout()
+
         # Create and setup sidebar
         self.sidebar = QWidget()
         self.sidebar.setMaximumWidth(200)
         self.sidebar.setMinimumWidth(200)
         sidebar_layout = QVBoxLayout()
-        
-        # Add buttons to sidebar
+
+        # Sidebar buttons
         theme_btn = QPushButton("🎨 Themes")
         theme_btn.clicked.connect(self.open_theme_window)
         help_btn = QPushButton("❓ Help")
         help_btn.clicked.connect(self.show_help)
         about_btn = QPushButton("About")
         about_btn.clicked.connect(self.show_about)
-        
+
         sidebar_layout.addWidget(theme_btn)
         sidebar_layout.addWidget(help_btn)
         sidebar_layout.addWidget(about_btn)
-        sidebar_layout.addStretch()  
+        sidebar_layout.addStretch()
         self.sidebar.setLayout(sidebar_layout)
-        
+
         # Create content widget for the main scraping interface
         content_widget = QWidget()
         content_layout = QVBoxLayout()
-        
-        # Add existing UI elements to content layout
+
+        # Header
+        header_title = QLabel("Modern Web Scraper")
+        header_title.setStyleSheet("font-size: 20px; font-weight: 600; margin: 4px 0;")
+        header_sub = QLabel("Enter a URL, choose content type, and press Scrape")
+        header_sub.setStyleSheet("color: #6b6b6b; margin-bottom: 8px;")
+        content_layout.addWidget(header_title)
+        content_layout.addWidget(header_sub)
+
+        # URL row
         url_layout = QHBoxLayout()
+        url_label = QLabel("URL:")
         self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("Enter URL to scrape")
-        url_layout.addWidget(QLabel("URL:"))
+        self.url_input.setPlaceholderText("example.com or https://example.com")
+        url_layout.addWidget(url_label)
         url_layout.addWidget(self.url_input)
-        
+
         self.data_type_combo = QComboBox()
         self.data_type_combo.addItems(["Headings", "Links", "Text Content", "Images"])
+
+        last_url = self.settings.value('last_url', '')
+        if last_url:
+            self.url_input.setText(last_url)
+        last_type = self.settings.value('last_data_type', None)
+        if last_type:
+            idx = self.data_type_combo.findText(last_type)
+            if idx >= 0:
+                self.data_type_combo.setCurrentIndex(idx)
+
+        self.url_input.editingFinished.connect(lambda: self.settings.setValue('last_url', self.url_input.text().strip()))
+        self.data_type_combo.currentTextChanged.connect(lambda t: self.settings.setValue('last_data_type', t))
+
         url_layout.addWidget(self.data_type_combo)
-        
+
         self.scrape_button = QPushButton("Scrape Website")
         self.scrape_button.clicked.connect(self.start_scraping)
         url_layout.addWidget(self.scrape_button)
-        
+
+        content_layout.addLayout(url_layout)
+
+        # Inline validation/error label
+        self.url_error = QLabel("")
+        self.url_error.setStyleSheet("color: #c0392b; font-size: 12px;")
+        content_layout.addWidget(self.url_error)
+
+        # Utility buttons row
+        utils_layout = QHBoxLayout()
+        btn_clear = QPushButton("Clear")
+        btn_clear.clicked.connect(self.clear_results)
+        btn_copy = QPushButton("Copy")
+        btn_copy.clicked.connect(self.copy_results)
+        btn_save = QPushButton("Save")
+        btn_save.clicked.connect(self.save_results_to_file)
+        utils_layout.addWidget(btn_clear)
+        utils_layout.addWidget(btn_copy)
+        utils_layout.addWidget(btn_save)
+        utils_layout.addStretch()
+        content_layout.addLayout(utils_layout)
+
+        # Results area
         self.results_text = QTextEdit()
         self.results_text.setReadOnly(True)
         self.results_text.setPlaceholderText("Scraped data will appear here...")
-        
-        content_layout.addLayout(url_layout)
         content_layout.addWidget(self.results_text)
+
         content_widget.setLayout(content_layout)
-        
+
         # Add sidebar and content to main layout
         main_layout.addWidget(self.sidebar)
         main_layout.addWidget(content_widget)
-        
+
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
 
@@ -169,6 +262,44 @@ class WebScraperApp(QMainWindow):
             self.theme_window = ThemeWindow(self)
         self.theme_window.show()
 
+    def clear_results(self):
+        self.results_text.clear()
+        self.statusBar().showMessage("Cleared", 1500)
+
+    def copy_results(self):
+        self.results_text.selectAll()
+        self.results_text.copy()
+        cursor = self.results_text.textCursor()
+        cursor.clearSelection()
+        self.results_text.setTextCursor(cursor)
+        self.statusBar().showMessage("Copied", 1500)
+
+    def save_results_to_file(self):
+        text = self.results_text.toPlainText()
+        if not text.strip():
+            self.statusBar().showMessage("Nothing to save", 2000)
+            return
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save Results", "results.txt", "Text Files (*.txt)")
+        if file_path:
+            try:
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(text)
+                self.statusBar().showMessage(f"Saved to {file_path}", 3000)
+            except Exception as e:
+                QMessageBox.critical(self, "Save Error", str(e))
+                self.statusBar().showMessage("Save failed", 3000)
+
+    def focus_url(self):
+        self.url_input.setFocus()
+        self.url_input.selectAll()
+
+    def closeEvent(self, event):
+        try:
+            self.settings.setValue('last_url', self.url_input.text().strip())
+            self.settings.setValue('last_data_type', self.data_type_combo.currentText())
+        finally:
+            super().closeEvent(event)
+
     def apply_theme(self, theme):
         base_styles = """
             QWidget {
@@ -176,6 +307,13 @@ class WebScraperApp(QMainWindow):
             }
             QMainWindow {
                 border: none;
+            }
+            QToolBar {
+                spacing: 6px;
+                padding: 4px 8px;
+            }
+            QStatusBar {
+                padding: 2px 6px;
             }
             QPushButton {
                 border: none;
@@ -495,21 +633,37 @@ class WebScraperApp(QMainWindow):
             """)
 
     def start_scraping(self):
-        url = self.url_input.text().strip()
-        if not url:
+        raw = self.url_input.text().strip()
+        if not raw:
+            self.url_error.setText("Please enter a URL.")
+            self.url_input.setFocus()
             return
-        
-        if not url.startswith(('http://', 'https://')):
-            url = 'https://' + url
-            
+
+        if not raw.startswith(("http://", "https://")):
+            candidate = "https://" + raw
+        else:
+            candidate = raw
+
+        parsed = urlparse(candidate)
+        if not parsed.netloc:
+            self.url_error.setText("Invalid URL. Try e.g. https://example.com")
+            self.url_input.setFocus()
+            return
+
+        self.url_error.clear()
+        url = candidate
+
         self.scrape_button.setEnabled(False)
         self.results_text.clear()
         self.results_text.setPlaceholderText("Scraping in progress...")
-        
+
         # Start the loading spinner
         self.loading_spinner.start()
-        
+        self.statusBar().showMessage("Scraping...")
+
         data_type = self.data_type_combo.currentText()
+        self.settings.setValue('last_url', url)
+        self.settings.setValue('last_data_type', data_type)
         self.scraper_thread = ScraperThread(url, data_type)
         self.scraper_thread.finished.connect(self.on_scraping_finished)
         self.scraper_thread.error.connect(self.on_scraping_error)
@@ -523,6 +677,7 @@ class WebScraperApp(QMainWindow):
         self.results_text.setPlainText(result)
         self.scrape_button.setEnabled(True)
         self.results_text.setPlaceholderText("Scraped data will appear here...")
+        self.statusBar().showMessage("Done", 3000)
 
     def on_scraping_error(self, error_msg):
         # Stop the loading spinner
@@ -530,6 +685,7 @@ class WebScraperApp(QMainWindow):
         self.results_text.setPlainText(f"Error: {error_msg}")
         self.scrape_button.setEnabled(True)
         self.results_text.setPlaceholderText("Scraped data will appear here...")
+        self.statusBar().showMessage("Error", 4000)
 
     def on_images_found(self, image_list):
         # Stop the loading spinner before showing dialog

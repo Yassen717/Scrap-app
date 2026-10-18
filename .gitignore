@@ -26,3 +26,14 @@ ENV/
 # Local development settings
 *.log
 .DS_Store
+ 
+# Windows artifacts 
+Thumbs.db 
+ehthumbs.db 
+Desktop.ini 
+*.lnk 
+ 
+# Packaging / installers 
+*.spec 
+*.exe 
+installer/
